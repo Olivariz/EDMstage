@@ -1,18 +1,225 @@
 import pymupdf4llm
 import pathlib
 import os
+import fitz
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
-path = input("Insert path to the PDF ")
-try:
-    md_text = pymupdf4llm.to_markdown(path)
-except FileNotFoundError: ("File not found, retry")
+def estrai_testo_con_nuova_riga(md_output):
+    print("estraggo gli spazi...")
+    #Apri il file .md in modalità lettura
+    with open(md_output, "r", encoding="utf-8") as file:
+        content = file.read()
 
-output=input("Insert the name of the output markdown file ")
-try:
-    pathlib.Path(output).write_bytes(md_text.encode())
-except FileExistsError:
-    decision = input("File with this name already exists, do you want to overwrite? Y or N")
-    if(decision=='Y'):
-        os.remove(output)
-        pathlib.Path(output).write_bytes(md_text.encode())
-print("File created successefully!")
+    #Rimuovi tutti gli spazi doppi
+    modified_content = content.replace("  ", " ")
+
+    #Continua a rimuovere gli spazi doppi fino a che non ci sono più
+    while "  " in modified_content:
+        modified_content = modified_content.replace("  ", " ")
+
+    #Sovrascrivi il file .md originale
+    with open(md_output, "w", encoding="utf-8") as file:
+        file.write(modified_content)
+
+    print("Gli spazi doppi sono stati rimossi con successo.")
+    return md_output
+
+
+# def toLowercase(parole_non_modificabili,md_path):
+#    Apri il file .md in modalità lettura
+#     with open(md_path, "r", encoding="utf-8") as file:
+#        content = file.read()
+#     for parola in content.split():
+#            if not parola in parole_non_modificabili.keys() and not parola.islower() :
+#                content=content.replace(parola, parola.lower())
+#     with open(md_path, "w", encoding="utf-8") as file:
+#        file.write(content)
+#     print("successo")
+#     return md_path      
+# 
+# 
+# # char_da_eliminare=["*",".", ",", ";", ")", "(", "[", "]"]
+        # for parola in content.split(" "):
+        #     if "*" in parola or "." in parola or "," in parola or ")" in parola or "(" in parola or "[" in parola or "]" in parola or ";" in parola:
+        #         for char in char_da_eliminare:
+        #             parola2 = parola.replace(char, "")
+        #     for banned in parole_non_modificabili:
+        #         if parola2!=banned:
+        #             parola2=parola.lower()
+        #     new_content=new_content+parola2+" "               
+
+def toLowercase(parole_non_modificabili, md_path): 
+    print("trasformo caratteri in minuscolo...")
+    contenuto_file = ""
+    risultato = []
+    parola = []
+    try:
+        # Apertura e lettura del contenuto del file
+        with open(md_path, 'r', encoding='utf-8') as file:
+            contenuto_file = file.read()
+
+        # Iterazione sui caratteri del contenuto del file
+        for carattere in contenuto_file:
+            if carattere.isalnum() or carattere == "'":
+                parola.append(carattere)
+            else:
+                if parola:
+                    parola_unita = ''.join(parola)
+                    if parola_unita.lower() in parole_non_modificabili:
+                        risultato.append(parola_unita.upper())
+                    else:
+                        risultato.append(parola_unita.lower())
+                    parola = []
+                risultato.append(carattere)
+
+        if parola:
+            parola_unita = ''.join(parola)
+            if parola_unita in parole_non_modificabili:
+                risultato.append(parola_unita.upper())
+            else:
+                risultato.append(parola_unita.lower())
+
+        # Converti la lista in una stringa per visualizzare il testo modificato
+        testo_modificato = ''.join(risultato)
+
+        # print("Lista di output:")
+        # print(risultato)
+
+        # print("\nTesto modificato:")
+        # print(testo_modificato)
+
+    except FileNotFoundError:
+        print(f"Errore: il file '{file}' non è stato trovato.")
+    except Exception as e:
+        print(f"Errore durante la lettura del file: {e}")
+
+    with open(md_path, "w", encoding="utf-8") as file:
+        file.write(testo_modificato)
+    print("Ho finito di trasformare")
+    return md_path                    
+
+
+def pdf_to_markdown(path_to_pdf, md_output):           #funzione che estrae il markdown
+    print("trasformo in .md...")
+    try:
+        md_text = pymupdf4llm.to_markdown(path_to_pdf) #trasferisci in markdown
+    except FileNotFoundError: ("File not found, retry") #gestione dell'eccezione
+    if  not md_output.endswith(".md"): 
+        md_output += ".md"                           #metti estensione .md se non è già messo
+    try:
+        pathlib.Path(md_output).write_bytes(md_text.encode()) #scrivi il file sulla directory specificata
+    except FileExistsError:                         #se già esiste...
+        decision = input("File with this name already exists, do you want to overwrite? Y or N")#chiede se si vuole sovrescrivere
+        if(decision=='Y'):                          #...se si
+            os.remove(md_output)                     #...elimina file
+            pathlib.Path(md_output).write_bytes(md_text.encode())#...e scrivi questo
+        else:                                       #...se no
+            print("Canceled")
+            return                                  #...ritorna
+    print("File is created successfully, the directory where the file is saved is "+md_output)
+    return md_output
+
+def extract_image(page_index, img_index, img, pdfDocument, imageOutputPath): #funzione per estrarre immagini
+    xref = img[0]                                   #inizializza vettore immagini
+    base_image = pdfDocument.extract_image(xref)    #...e estrai l'immagine dal documento
+    image_bytes = base_image["image"]               #trasforma immagine in una sequenza di byte
+    image_ext = base_image["ext"]                   #...e scrivi la sua estensione
+    image_output_path = os.path.join(imageOutputPath, f"pagina{page_index+1}immagine{img_index+1}.{image_ext}")#salva il suo path
+
+    with open(image_output_path, "wb") as img_file: #apri buffered writer
+        img_file.write(image_bytes)                 #...e scrivi tutte le immagini
+
+    return image_output_path                        #ritorna il path
+
+def extractImages(pathToPDF, images_output_dir):    #la funzione che apre il documento e utilizzando i thread e la funzione extract_image                                              
+    try:                                            #estrae immagini e le salva nella directory specificata
+        pdfDocument = fitz.open(pathToPDF)          #apre documento
+        tasks = []                                  #inizializza la lista "tasks"
+    except FileNotFoundError:                       #eccezione
+        print("File not found, retry")
+
+    with ThreadPoolExecutor() as executor:          #inizializza il thread
+        for page_index in range(len(pdfDocument)):
+            pagina = pdfDocument.load_page(page_index)#estrai pagine
+            immagini = pagina.get_images(full=True) #estrai immagini dalla pagina
+            
+            for img_index, img in enumerate(immagini):
+                tasks.append(executor.submit(extract_image, page_index, img_index, img, pdfDocument, images_output_dir))#inizializza la task che estrae immagine
+        
+        for future in as_completed(tasks):          #quando completato...
+            try:                                    
+                result = future.result()            #ottieni risultato
+                print(f"Image saved: {result}")     #stampa risultato
+            except Exception as e:                  #se no...
+                print(f"An error occurred: {e}")    #stampa errore
+
+    print("Files created successfully in the following dir: " + images_output_dir)
+
+
+if __name__ == "__main__":
+    #Funzione per passare gli input alla funzione "pdf_to_markdown_with_images"
+    def PDF_To_MD():                                #funzione che unisce tutte le funzioni precedenti, chiede input all'utente e fa partire i thread
+            
+            # Inserisci il percorso del PDF
+            path_to_pdf = input("Inserisci il percorso del PDF: ")
+
+             # Inserisci il nome del file del Markdown
+            name = os.path.join(os.path.expanduser('~'), "Documents")
+            name = os.path.join(name, "EDM")
+            name1= os.path.splitext(os.path.basename(path_to_pdf))[0]
+            md_output =os.path.join(name ,name1)
+
+
+            # Inserisci il nome della directory per le immagini estratte
+            path = os.path.join(os.path.expanduser('~'), "Pictures")
+            path = os.path.join(path, "EDM")
+
+            images_output_dir = os.path.join(path, name1)
+
+            os.makedirs(images_output_dir, exist_ok=True)
+
+            tasks=[]
+            with ThreadPoolExecutor() as executor:
+                tasks.append(executor.submit(extractImages, path_to_pdf, images_output_dir))
+
+                for future in as_completed(tasks):
+                    try:
+                        result = future.result()
+                        print(f"File saved: {result}")
+                    except Exception as e:
+                        print(f"An error occurred: {e}")
+            parole_non_modificabili={ }
+            parole=input("scrivi parole separate della virgola: ").split(",")
+            for parola in parole:
+                parole_non_modificabili[parola]= None
+            md_output=pdf_to_markdown(path_to_pdf, md_output)
+            md_output=estrai_testo_con_nuova_riga(md_output)
+            toLowercase(parole_non_modificabili,md_output)
+
+            
+             # Esegui la conversione e l'estrazione delle immagini
+            
+           
+
+
+#Funzione per il menu con match case
+    def menu(scelta):
+        match scelta:
+            case 0:
+                exit()
+            case 1:
+                PDF_To_MD()
+                scelta = 100
+                
+
+
+    def main():
+        scelta = 100
+        while(scelta != 0):
+            print("Benvenuto! cosa si vuole fare? \n 0. Uscire \n 1. Convertire un file PDF in Markdown \n")
+            scelta = input("Inserire il numero per svolgere l'opzione desiderata: ")
+            scelta = int(scelta)
+            menu(scelta)
+
+
+    main()
