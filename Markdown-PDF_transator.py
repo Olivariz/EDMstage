@@ -1,4 +1,3 @@
-import pymupdf4llm
 import pathlib
 import os
 import fitz
@@ -23,30 +22,7 @@ def estrai_testo_con_nuova_riga(md_output):
 
     print("Gli spazi doppi sono stati rimossi con successo.")
     return md_output
-
-
-# def toLowercase(parole_non_modificabili,md_path):
-#    Apri il file .md in modalità lettura
-#     with open(md_path, "r", encoding="utf-8") as file:
-#        content = file.read()
-#     for parola in content.split():
-#            if not parola in parole_non_modificabili.keys() and not parola.islower() :
-#                content=content.replace(parola, parola.lower())
-#     with open(md_path, "w", encoding="utf-8") as file:
-#        file.write(content)
-#     print("successo")
-#     return md_path      
-# 
-# 
-# # char_da_eliminare=["*",".", ",", ";", ")", "(", "[", "]"]
-        # for parola in content.split(" "):
-        #     if "*" in parola or "." in parola or "," in parola or ")" in parola or "(" in parola or "[" in parola or "]" in parola or ";" in parola:
-        #         for char in char_da_eliminare:
-        #             parola2 = parola.replace(char, "")
-        #     for banned in parole_non_modificabili:
-        #         if parola2!=banned:
-        #             parola2=parola.lower()
-        #     new_content=new_content+parola2+" "               
+              
 
 def toLowercase(parole_non_modificabili, md_path): 
     print("trasformo caratteri in minuscolo...")
@@ -81,13 +57,7 @@ def toLowercase(parole_non_modificabili, md_path):
 
         # Converti la lista in una stringa per visualizzare il testo modificato
         testo_modificato = ''.join(risultato)
-
-        # print("Lista di output:")
-        # print(risultato)
-
-        # print("\nTesto modificato:")
-        # print(testo_modificato)
-
+        
     except FileNotFoundError:
         print(f"Errore: il file '{file}' non è stato trovato.")
     except Exception as e:
@@ -98,25 +68,67 @@ def toLowercase(parole_non_modificabili, md_path):
     print("Ho finito di trasformare")
     return md_path                    
 
+def extract_text_with_formatting(page):
+    """ Extract text with formatting from a PDF page and convert to Markdown. """
+    blocks = page.get_text("dict")["blocks"]
+    md_text = ""
+    
+    for block in blocks:
+        if block['type'] == 0:  # this block contains text
+            for line in block["lines"]:
+                for span in line["spans"]:
+                    text = span["text"].strip()
+                    font = span["font"]
+                    size = span["size"]
+                    
+                    # Example logic for bold and headings
+                    if "Bold" in font and text != " " and text != "\n" and text != "":
+                        text = f"**{text}** "
+                    if size > 20:  # Assume size > 15 as a heading
+                        text = f"# {text}"
 
-def pdf_to_markdown(path_to_pdf, md_output):           #funzione che estrae il markdown
-    print("trasformo in .md...")
+                    md_text += text
+                md_text += "\n"
+        md_text += "\n"
+    
+    return md_text
+
+def pdf_to_markdown(path_to_pdf, md_output):
     try:
-        md_text = pymupdf4llm.to_markdown(path_to_pdf) #trasferisci in markdown
-    except FileNotFoundError: ("File not found, retry") #gestione dell'eccezione
-    if  not md_output.endswith(".md"): 
-        md_output += ".md"                           #metti estensione .md se non è già messo
+        # Apri il documento PDF
+        pdf_document = fitz.open(path_to_pdf)
+    except FileNotFoundError:
+        print("File not found, retry")
+        return
+    
+    md_text = ""
+    
+    # Itera attraverso tutte le pagine del PDF
+    for page_num in range(len(pdf_document)):
+        page = pdf_document.load_page(page_num)
+        md_text += extract_text_with_formatting(page).strip("\n")
+        md_text = rf"{md_text}"
+        if "Tipo Documento" in md_text:
+            if "Descrizione Revisione" in md_text:
+                da_eliminare=md_text[md_text.find("Tipo Documento"):md_text.find("Descrizione Revisione")+21]
+                md_text=md_text.replace(da_eliminare, "")
+    
+    # Verifica se l'output ha l'estensione .md
+    if not md_output.endswith(".md"):
+        md_output += ".md"
+    
     try:
-        pathlib.Path(md_output).write_bytes(md_text.encode()) #scrivi il file sulla directory specificata
-    except FileExistsError:                         #se già esiste...
-        decision = input("File with this name already exists, do you want to overwrite? Y or N")#chiede se si vuole sovrescrivere
-        if(decision=='Y'):                          #...se si
-            os.remove(md_output)                     #...elimina file
-            pathlib.Path(md_output).write_bytes(md_text.encode())#...e scrivi questo
-        else:                                       #...se no
+        # Scrivi il contenuto Markdown su un file
+        pathlib.Path(md_output).write_text(md_text, encoding="utf-8")
+    except FileExistsError:
+        decision = input("File with this name already exists, do you want to overwrite? Y or N ")
+        if decision == 'Y':
+            pathlib.Path(md_output).write_text(md_text, encoding="utf-8")
+        else:
             print("Canceled")
-            return                                  #...ritorna
-    print("File is created successfully, the directory where the file is saved is "+md_output)
+            return
+    
+    print(f"File created successfully at: {md_output}")
     return md_output
 
 def extract_image(page_index, img_index, img, pdfDocument, imageOutputPath): #funzione per estrarre immagini
