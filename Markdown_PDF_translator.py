@@ -128,19 +128,21 @@ def pdf_to_markdown(path_to_pdf, md_output):
         else:
             print("Canceled")
             return
-    
+        
     #print(f"File created successfully at: {md_output}")
     return md_output
 
-def extract_image(page_index, img_index, img, pdfDocument, imageOutputPath): #funzione per estrarre immagini
+def extract_image(page_index, img_index, img, pdfDocument, pagina, imageOutputPath): #funzione per estrarre immagini
     xref = img[0]                                   #inizializza vettore immagini
     base_image = pdfDocument.extract_image(xref)    #...e estrai l'immagine dal documento
     image_bytes = base_image["image"]               #trasforma immagine in una sequenza di byte
     image_ext = base_image["ext"]                   #...e scrivi la sua estensione
     image_output_path = os.path.join(imageOutputPath, f"pagina{page_index+1}immagine{img_index+1}.{image_ext}")#salva il suo path
+    rect = pagina.get_image_bbox(img)
 
     with open(image_output_path, "wb") as img_file: #apri buffered writer
         img_file.write(image_bytes)                 #...e scrivi tutte le immagini
+    pagina.insert_text((rect.x0, rect.y0), "immagine")                 
 
     return image_output_path                        #ritorna il path
 
@@ -150,7 +152,7 @@ def extractImages(pathToPDF, images_output_dir):    #la funzione che apre il doc
         tasks = []                                  #inizializza la lista "tasks"
     except FileNotFoundError:                       #eccezione
         print("File not found, retry")
-        ui.lblAvvisi_file.setText("File non trovato, riprova")
+        #ui.lblAvvisi_file.setText("File non trovato, riprova")
 
     with ThreadPoolExecutor() as executor:          #inizializza il thread
         for page_index in range(len(pdfDocument)):
@@ -158,15 +160,15 @@ def extractImages(pathToPDF, images_output_dir):    #la funzione che apre il doc
             immagini = pagina.get_images(full=True) #estrai immagini dalla pagina
             
             for img_index, img in enumerate(immagini):
-                tasks.append(executor.submit(extract_image, page_index, img_index, img, pdfDocument, images_output_dir))#inizializza la task che estrae immagine
+                tasks.append(executor.submit(extract_image, page_index, img_index, img, pdfDocument, pagina, images_output_dir))#inizializza la task che estrae immagine
         
         for future in as_completed(tasks):          #quando completato...
             try:                                    
                 result = future.result()            #ottieni risultato
                 #print(f"Image saved: {result}")     #stampa risultato
             except Exception as e:                  #se no...
-                #print(f"An error occurred: {e}")
-                ui.lblAvvisi_file.setText(f"An error occurred: {e}")    #stampa errore
+                print(f"An error occurred: {e}")
+                #ui.lblAvvisi_file.setText(f"An error occurred: {e}")    #stampa errore
 
     #print("Files created successfully in the following dir: " + images_output_dir)
 
@@ -214,4 +216,7 @@ def PDF_To_MD(filename, parole_proibite):                                #funzio
 
             
              # Esegui la conversione e l'estrazione delle immagini
+    
+
+        
     
